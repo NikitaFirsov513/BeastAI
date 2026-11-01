@@ -2,17 +2,22 @@
 <html lang="ru">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BeastAI · Проверка разметки WAID</title>
+<title>BeastAI · Разметка и первая нейросеть</title>
 <style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101719;color:#edf4f0}*{box-sizing:border-box}body{margin:0}main{max-width:1440px;margin:auto;padding:32px 24px}header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.brand{color:#9cf4bc;font-size:12px;letter-spacing:3px}h1{font-size:30px;margin:8px 0}p{color:#b5c6bd;line-height:1.5}.toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#182321ee;padding:16px;border:1px solid #35443d;border-radius:12px;margin:24px 0}button,select,input{font:inherit;color:inherit;background:#22332b;border:1px solid #486252;border-radius:7px;padding:9px 12px}button{cursor:pointer}button:hover{background:#304e3d}button:disabled{opacity:.4;cursor:default}input[type=checkbox]{accent-color:#9cf4bc}input[type=search]{min-width:180px;flex:1}label{display:flex;align-items:center;gap:6px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(350px,100%),1fr));gap:20px}.card{background:#19221f;border:1px solid #35443d;border-radius:12px;overflow:hidden}.photo{position:relative;display:block;cursor:zoom-in;overflow:hidden;background:#060b08}.photo img{display:block;width:100%;height:auto}.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.overlay rect{fill:none;stroke:#80ff9b;stroke-width:2;vector-effect:non-scaling-stroke}.overlay text{fill:#fff;stroke:#102c18;stroke-width:3px;paint-order:stroke;font:bold 13px system-ui;vector-effect:non-scaling-stroke}.no-boxes .overlay{display:none}.no-names .overlay text{display:none}.info{padding:13px 16px}.meta{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:#a9ddbb}.filename{font:11px ui-monospace,monospace;overflow-wrap:anywhere;color:#9bafa2;margin-top:10px}.error{color:#ffb69d}.footer{display:flex;justify-content:center;align-items:center;gap:18px;margin:28px 0}small{color:#8ea99b}dialog{width:min(1400px,96vw);max-height:95vh;padding:14px;border:1px solid #486252;border-radius:12px;background:#101719;color:inherit}dialog::backdrop{background:#000c}dialog .photo{cursor:default}dialog .photo img{width:100%;max-height:78vh;object-fit:contain}dialog .closebar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}dialog .photo{width:fit-content;max-width:100%;margin:auto}#status{min-height:24px}a{color:#9cf4bc}
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101719;color:#edf4f0}*{box-sizing:border-box}body{margin:0}main{max-width:1440px;margin:auto;padding:32px 24px}header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.brand{color:#9cf4bc;font-size:12px;letter-spacing:3px}h1{font-size:30px;margin:8px 0}p{color:#b5c6bd;line-height:1.5}.toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#182321ee;padding:16px;border:1px solid #35443d;border-radius:12px;margin:24px 0}button,select,input{font:inherit;color:inherit;background:#22332b;border:1px solid #486252;border-radius:7px;padding:9px 12px}button{cursor:pointer}button:hover{background:#304e3d}button:disabled{opacity:.4;cursor:default}input[type=checkbox]{accent-color:#9cf4bc}input[type=search]{min-width:180px;flex:1}label{display:flex;align-items:center;gap:6px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(350px,100%),1fr));gap:20px}.card{background:#19221f;border:1px solid #35443d;border-radius:12px;overflow:hidden}.photo{position:relative;display:block;cursor:zoom-in;overflow:hidden;background:#060b08}.photo img{display:block;width:100%;height:auto}.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.overlay rect{fill:none;stroke:#80ff9b;stroke-width:2;vector-effect:non-scaling-stroke}.overlay text{fill:#fff;stroke:#102c18;stroke-width:3px;paint-order:stroke;font:bold 13px system-ui;vector-effect:non-scaling-stroke}.no-boxes .overlay.reference{display:none}.no-predictions .overlay.prediction{display:none}.overlay.prediction rect{stroke:#69b9ff;stroke-dasharray:6 4}.overlay.prediction text{fill:#a4d7ff;stroke:#102535}.no-names .overlay text{display:none}.info{padding:13px 16px}.meta{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:#a9ddbb}.filename{font:11px ui-monospace,monospace;overflow-wrap:anywhere;color:#9bafa2;margin-top:10px}.error{color:#ffb69d}.footer{display:flex;justify-content:center;align-items:center;gap:18px;margin:28px 0}small{color:#8ea99b}dialog{width:min(1400px,96vw);max-height:95vh;padding:14px;border:1px solid #486252;border-radius:12px;background:#101719;color:inherit}dialog::backdrop{background:#000c}dialog .photo{cursor:default}dialog .photo img{width:100%;max-height:78vh;object-fit:contain}dialog .closebar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}dialog .photo{width:fit-content;max-width:100%;margin:auto}#status{min-height:24px}a{color:#9cf4bc}.comparison{background:#182321;padding:18px;border:1px solid #35443d;border-radius:12px;margin:20px 0}.tablewrap{overflow:auto}.metrics{border-collapse:collapse;width:100%;font-size:14px}.metrics th,.metrics td{text-align:left;padding:10px;border-bottom:1px solid #35443d;white-space:nowrap}.comparison h2{margin-top:0;font-size:22px}
 </style>
 <main>
-<header><div><div class="brand">BEASTAI / DATA EXPLORER</div><h1>Животные и правильные рамки</h1></div></header>
-<p>Исходные снимки WAID и разметка авторов. Это <strong>не предсказания нейросети</strong>.<br>Нажми на снимок, чтобы увеличить. Зелёные рамки можно скрыть для сравнения.</p>
+<header><div><div class="brand">BEASTAI / DATA EXPLORER</div><h1>Разметка и первая нейросеть</h1></div></header>
+<p><span style="color:#80ff9b">Зелёные рамки — разметка авторов.</span> <span style="color:#69b9ff">Синие пунктирные — предсказания модели.</span><br><span id="modelstage">Загружается информация о модели.</span> Нажми на снимок для увеличения и переключай слои.</p>
+<p id="baselineinfo"></p>
+<p id="auditinfo" style="color:#efcf8e" role="note"></p>
+<section id="comparison" class="comparison" hidden><h2>Автоматическое сравнение</h2><p id="comparisonscope"></p><div class="tablewrap"><table class="metrics"><thead><tr><th>Режим</th><th>Совпадений</th><th id="missheader">Рамок разметки без пары</th><th id="falseheader">Предсказаний без пары</th><th>Вся цепочка, мс</th></tr></thead><tbody id="comparisonrows"></tbody></table></div><p><small id="comparisonnote">Совпадение: IoU ≥ 0,5, по одной рамке с каждой стороны.</small></p></section>
 <div class="toolbar">
- <label><input id="boxes" type="checkbox" checked> Рамки</label>
- <label><input id="names" type="checkbox" checked> Категории</label>
- <select id="split" aria-label="Часть набора"><option value="">Все части</option><option value="train">train — обучение</option><option value="valid">valid — проверка при настройке</option><option value="test">test — итоговая проверка</option></select>
+ <label><input id="boxes" type="checkbox" checked> Разметка авторов</label>
+ <label><input id="predictions" type="checkbox" checked> Предсказания</label>
+ <label><input id="names" type="checkbox" checked> Подписи</label>
+ <select id="split" aria-label="Часть набора"><option value="">Все части</option><option value="train" selected>train — обучение</option><option value="valid">valid — проверка при настройке</option><option value="test">test — итоговая проверка</option></select>
+ <select id="category" aria-label="Категории животных"><option value="europe" selected>Виды Восточной Европы</option><option value="red_deer">Благородные олени</option><option value="">Все в рабочем наборе</option></select>
  <input id="search" type="search" placeholder="Поиск по имени файла" aria-label="Поиск по имени файла">
 </div>
 <p id="status" aria-live="polite">Загружаем список…</p>
@@ -21,29 +26,34 @@
 <small id="note"></small>
 <p><small>Пустая разметка, отсутствующий файл и ошибка разметки показываются отдельно. Маленькая выборка нужна для знакомства с данными; она не даёт надёжной оценки качества модели.</small></p>
 </main>
-<dialog id="zoom"><div class="closebar"><span id="zoomtitle"></span><label><input id="zoomboxes" type="checkbox" checked aria-label="Рамки на увеличенном снимке"> Рамки</label><label><input id="zoomnames" type="checkbox" checked aria-label="Категории на увеличенном снимке"> Категории</label><button id="close">Закрыть · Esc</button></div><div id="zoomphoto"></div></dialog>
+<dialog id="zoom"><div class="closebar"><span id="zoomtitle"></span><label><input id="zoomboxes" type="checkbox" checked aria-label="Разметка авторов на увеличенном снимке"> Авторы</label><label><input id="zoompredictions" type="checkbox" checked aria-label="Предсказания на увеличенном снимке"> Модель</label><label><input id="zoomnames" type="checkbox" checked aria-label="Категории на увеличенном снимке"> Подписи</label><button id="close">Закрыть · Esc</button></div><div id="zoomphoto"></div><p id="zoomfilename" class="filename"></p></dialog>
 <script>
 const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
 let page=0, generation=0, searchTimer;
+const initialQuery=new URLSearchParams(location.search);if(initialQuery.get('split')!==null)$('split').value=initialQuery.get('split');
 function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 function photo(item){
- const wrap=element('div','photo'), img=element('img');img.loading='lazy';img.alt='Снимок WAID: '+item.name;img.src=item.src;wrap.append(img);
- const svg=document.createElementNS(NS,'svg');svg.classList.add('overlay');svg.setAttribute('aria-hidden','true');
- img.addEventListener('load',()=>{
-  svg.replaceChildren();const w=img.naturalWidth,h=img.naturalHeight;svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
-  for(const [i,b] of item.boxes.entries()){
-   const rect=document.createElementNS(NS,'rect');for(const [k,v] of Object.entries({x:b.x*w,y:b.y*h,width:b.width*w,height:b.height*h}))rect.setAttribute(k,v);svg.append(rect);
-   const text=document.createElementNS(NS,'text');text.setAttribute('x',Math.max(2,b.x*w));text.setAttribute('y',Math.max(14,b.y*h-4));text.textContent=`${i+1} · ${b.class_name}`;svg.append(text);
-  }
- });
+ const wrap=element('div','photo'), img=element('img');img.loading='lazy';img.alt='Снимок: '+item.name;wrap.append(img);
+ const layers=[{name:'reference',boxes:item.boxes},{name:'prediction',boxes:item.prediction?.boxes??[]}];
+ for(const layer of layers){
+  const svg=document.createElementNS(NS,'svg');svg.classList.add('overlay',layer.name);svg.setAttribute('aria-hidden','true');wrap.append(svg);
+  img.addEventListener('load',()=>{
+   svg.replaceChildren();const w=img.naturalWidth,h=img.naturalHeight,fontSize=Math.max(13,w/Math.max(1,img.clientWidth)*12);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
+   for(const [i,b] of layer.boxes.entries()){
+    const rect=document.createElementNS(NS,'rect');for(const [k,v] of Object.entries({x:b.x*w,y:b.y*h,width:b.width*w,height:b.height*h}))rect.setAttribute(k,v);svg.append(rect);
+    const text=document.createElementNS(NS,'text');text.style.fontSize=fontSize+'px';text.style.strokeWidth=(fontSize/4)+'px';text.setAttribute('x',Math.max(2,b.x*w));text.setAttribute('y',Math.max(fontSize*1.1,b.y*h-fontSize/4));text.textContent=`${i+1} · ${b.class_name}${b.score===undefined?'':' · '+b.score.toFixed(2)}`;svg.append(text);
+   }
+  });
+ }
  img.addEventListener('error',()=>{wrap.append(element('p','error','Не удалось прочитать изображение. Повтори загрузку набора.'))});
- wrap.append(svg);return wrap;
+ img.src=item.src;return wrap;
 }
 function card(item){
  const card=element('article','card'), preview=photo(item);preview.tabIndex=0;preview.setAttribute('role','button');preview.setAttribute('aria-label','Увеличить снимок');
- const open=()=>{$('zoomtitle').textContent=`${item.split} · Рамок: ${item.boxes.length}`;$('zoomphoto').replaceChildren(photo(item));$('zoom').showModal()};
+ const open=()=>{$('zoomtitle').textContent=`${item.split} · Автор: ${item.boxes.length} · Модель: ${item.prediction?.boxes.length??"нет запуска"}`;$('zoomphoto').replaceChildren(photo(item));$('zoomfilename').textContent=item.name;$('zoom').showModal()};
  preview.onclick=open;preview.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}};
- const info=element('div','info'), meta=element('div','meta');meta.append(element('span','',item.split),element('span','',`Рамок: ${item.boxes.length}`));info.append(meta);
+ const info=element('div','info'), meta=element('div','meta');meta.append(element('span','',item.split+(item.flight_id===null?'':' · Полёт '+item.flight_id)),element('span','',`Автор: ${item.boxes.length} · Модель: ${item.prediction?.boxes.length??"—"}`));info.append(meta);
+ if(!item.prediction)info.append(element('p','','Для этого снимка модель пока не запускалась.'));
  if(item.status==='empty')info.append(element('p','','Файл разметки пуст: рамок нет.'));
  for(const error of item.errors)info.append(element('p','error',error));
  info.append(element('div','filename',item.name));card.append(preview,info);return card;
@@ -51,15 +61,27 @@ function card(item){
 async function load(){
  const token=++generation;$('status').textContent='Загружаем список…';
  try{
-  const response=await fetch('/api/items?'+new URLSearchParams({page,split:$('split').value,q:$('search').value}));if(!response.ok)throw Error(await response.text());const data=await response.json();if(token!==generation)return;
-  page=data.page;$('grid').replaceChildren(...data.items.map(card));$('status').textContent=`На компьютере: ${data.downloaded} из ${data.repository_total} снимков. По фильтру: ${data.total}.`;
+  const response=await fetch('/api/items?'+new URLSearchParams({page,split:$('split').value,category:$('category').value,q:$('search').value}));if(!response.ok)throw Error(await response.text());const data=await response.json();if(token!==generation)return;
+  $('modelstage').textContent=data.dataset==='sherbrooke'?'В просмотре — YOLO11n после 20 эпох дообучения, один класс animal (олени в этом учебном опыте).':'Готовая YOLO11n: мы ещё не дообучали её на этих снимках.';
+  $('baselineinfo').textContent=data.baseline?`${data.baseline.model} · вход ${data.baseline.conditions.input_shape[2]} × ${data.baseline.conditions.input_shape[3]} · один кадр за запуск · медианное время всей цепочки ${data.baseline.timing_summary.total_ms.median.toFixed(1)} мс на ${data.baseline.conditions.gpu}. Это предварительный замер на маленькой выборке.`:'Предсказаний пока нет. Запусти baseline.py.';
+  $('auditinfo').textContent=data.dataset==='bambi'?'Разметка авторов покрывает проверенные траектории, но не всех животных в кадре. Синяя рамка без зелёной не обязательно означает ошибку модели. Показатель качества потребует полной проверки разметки.':'';
+  $('comparison').hidden=!data.analysis;
+  if(data.analysis){
+   const a=data.analysis;const full=Boolean(a.precision_available);
+   $('missheader').textContent=full?'Пропуски':'Рамок разметки без пары';$('falseheader').textContent=full?'Ложные обнаружения':'Предсказаний без пары';
+   $('comparisonscope').textContent=`${a.validation_images} проверочных кадров, ${a.experiments[0].reference_boxes} рамок разметки. ${a.validation_flights?.length?'Полёты: '+a.validation_flights.join(', ')+'.':'Сохранено исходное разделение авторов по полётам.'} Расчёт выполняет программа на одной и той же проверочной части.`;
+   $('comparisonnote').textContent=full?`Совпадение: IoU ≥ 0,5. Ложные рамки и пропуски считаются по авторской COCO-разметке для оленей. Время — медиана всей цепочки на тех же ${a.experiments[0].timing_images} кадрах, по одному кадру за запуск, FP32. Это небольшой учебный опыт на съёмке фермы в Канаде.`:`Совпадение: IoU ≥ 0,5. Предсказание без пары не обязательно ошибочно: исходная разметка покрывает не всех животных. Время — медиана всей цепочки на тех же ${a.experiments[0].timing_images} кадрах.`;
+   $('comparisonrows').replaceChildren(...a.experiments.map(e=>{const row=element('tr');for(const value of [e.label??`${e.resolution} · порог ${e.confidence_threshold}`,`${e.matched} / ${e.reference_boxes}`,e.unmatched_reference,e.unmatched_predictions,e.median_total_ms.toFixed(1)])row.append(element('td','',String(value)));return row}));
+  }
+  page=data.page;$('grid').replaceChildren(...data.items.map(card));$('status').textContent=`${data.dataset_title}. Кадров в рабочей выборке: ${data.downloaded}. По выбранным фильтрам: ${data.total}.`;
   $('page').textContent=`${page+1} / ${data.pages}`;$('prev').disabled=page===0;$('next').disabled=page+1>=data.pages;
-  $('note').textContent=`Источник: xiaohuicui/WAID · версия ${data.revision.slice(0,12)}. Снимки не изменяются; рамки рисует просмотрщик.`;
+  $('note').textContent=`${data.dataset_title} · версия ${data.revision.slice(0,12)}. Снимки не изменяются; рамки рисует просмотрщик.`;
  }catch(e){if(token===generation)$('status').textContent='Ошибка: '+e.message}
 }
 for(const id of ['boxes','zoomboxes'])$(id).onchange=()=>{const checked=$(id).checked;document.body.classList.toggle('no-boxes',!checked);$('boxes').checked=checked;$('zoomboxes').checked=checked};
+for(const id of ['predictions','zoompredictions'])$(id).onchange=()=>{const checked=$(id).checked;document.body.classList.toggle('no-predictions',!checked);$('predictions').checked=checked;$('zoompredictions').checked=checked};
 for(const id of ['names','zoomnames'])$(id).onchange=()=>{const checked=$(id).checked;document.body.classList.toggle('no-names',!checked);$('names').checked=checked;$('zoomnames').checked=checked};
-$('split').onchange=()=>{page=0;load()};$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=0;load()},250)};
+$('split').onchange=()=>{page=0;load()};$('category').onchange=()=>{page=0;load()};$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=0;load()},250)};
 $('prev').onclick=()=>{page--;load();window.scrollTo({top:0})};$('next').onclick=()=>{page++;load();window.scrollTo({top:0})};$('close').onclick=()=>$('zoom').close();
 load();
 </script>

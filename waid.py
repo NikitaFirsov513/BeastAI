@@ -25,6 +25,18 @@ INDEX = DATA / "index.json"
 REPO = "https://api.github.com/repos/xiaohuicui/WAID"
 RAW = "https://raw.githubusercontent.com/xiaohuicui/WAID"
 SPLITS = ("train", "valid", "test")
+DATASET = "waid"
+PREFIX = "WAID"
+
+
+def configure_dataset(name):
+    global DATA, INDEX, DATASET, PREFIX
+    if name not in ("waid", "bambi", "sherbrooke"):
+        raise ValueError("Unknown dataset")
+    DATASET, PREFIX = name, name.upper()
+    DATA = ROOT / "data" / name
+    INDEX = DATA / "index.json"
+
 
 
 def fetch(url):
@@ -49,6 +61,8 @@ def save_json(path, value):
 def get_index():
     if INDEX.exists():
         return json.loads(INDEX.read_text(encoding="utf-8"))
+    if DATASET != "waid":
+        raise ValueError(f"No local {DATASET} dataset. Run its fetch script first.")
     print("Reading GitHub file list (no image archive)...", flush=True)
     commit = json.loads(fetch(REPO + "/commits/main"))
     revision = commit["sha"]
@@ -81,7 +95,7 @@ def get_index():
 
 def local_file(entry):
     parts = PurePosixPath(entry["path"]).parts
-    if len(parts) != 4 or parts[0] != "WAID" or parts[1] not in ("images", "labels") or parts[2] not in SPLITS or any(p in (".", "..") or "\\" in p for p in parts):
+    if len(parts) != 4 or parts[0] != PREFIX or parts[1] not in ("images", "labels") or parts[2] not in SPLITS or any(p in (".", "..") or "\\" in p for p in parts):
         raise ValueError("Unsafe dataset path")
     path = DATA.joinpath(*parts[1:]).resolve()
     if not path.is_relative_to(DATA.resolve()):
@@ -180,8 +194,21 @@ def parse_labels(path, classes):
     return {"status": "invalid" if errors else ("ok" if boxes else "empty"), "boxes": boxes, "errors": errors}
 
 
+def downloaded_pairs(index):
+    names = set()
+    for split in SPLITS:
+        folder = DATA / 'images' / split
+        if folder.is_dir():
+            names.update((split, path.name) for path in folder.iterdir() if path.is_file())
+    return [pair for pair in index['pairs'] if (pair['split'], pair['name']) in names and local_file(pair['image']).is_file()]
+
+
 def make_handler(index):
-    available = [p for p in index["pairs"] if local_file(p["image"]).is_file()]
+    available = downloaded_pairs(index)
+    wild_species = {'red_deer','roe_deer','wild_boar','moose','fox','wolf','hare','european_bison'}
+    categories = {(p['split'],p['name']): ({p['species']} if p.get('species') else {b['class_name'] for b in parse_labels(local_file(p['label']),index['classes'])['boxes']}) for p in available}
+    category_counts = Counter(name for names in categories.values() for name in names)
+    wild_count = sum(bool(names.intersection(wild_species)) for names in categories.values())
     allowed_images = {"/data/" + "/".join(PurePosixPath(p["image"]["path"]).parts[1:]): local_file(p["image"]) for p in available}
 
     class Handler(BaseHTTPRequestHandler):
@@ -204,15 +231,30 @@ def make_handler(index):
                     query = urllib.parse.parse_qs(url.query)
                     split = query.get("split", [""])[0]
                     needle = query.get("q", [""])[0].lower()
+                    category = query.get("category", [""])[0]
                     page = max(0, int(query.get("page", ["0"])[0]))
-                    selected = [p for p in available if (not split or p["split"] == split) and needle in p["name"].lower()]
+                    selected = [p for p in available if (not split or p["split"] == split) and needle in p["name"].lower() and (not category or (bool(categories[(p["split"],p["name"])].intersection(wild_species)) if category in ("wild","europe") else category in categories[(p["split"],p["name"])]))]
                     pages = max(1, (len(selected) + 11) // 12)
                     page = min(page, pages - 1)
+                    baseline_path = (ROOT / 'data' / 'baseline' if DATASET == 'waid' else DATA / 'baseline') / 'latest.json'
+                    baseline = json.loads(baseline_path.read_text(encoding='utf-8')) if baseline_path.exists() else None
+                    if baseline and baseline.get('dataset_revision') != index['revision']:
+                        raise ValueError('Prediction report belongs to a different dataset revision')
                     items = []
                     for pair in selected[page * 12:(page + 1) * 12]:
                         label = parse_labels(local_file(pair["label"]), index["classes"])
-                        items.append({"name": pair["name"], "split": pair["split"], "src": "/data/" + "/".join(PurePosixPath(pair["image"]["path"]).parts[1:]), **label})
-                    result = {"total": len(selected), "downloaded": len(available), "repository_total": len(index["pairs"]), "page": page, "pages": pages, "revision": index["revision"], "items": items}
+                        prediction = baseline['items'].get(pair['split']+'/'+pair['name']) if baseline else None
+                        if prediction and (prediction['image_git_sha'] != pair['image']['sha'] or prediction['label_git_sha'] != pair['label']['sha']):
+                            raise ValueError('Prediction checksum differs from dataset index')
+                        items.append({"flight_id": pair.get("flight_id"), "prediction": prediction, "name": pair["name"], "split": pair["split"], "src": "/data/" + "/".join(PurePosixPath(pair["image"]["path"]).parts[1:]), **label})
+                    baseline_summary = {key: baseline[key] for key in ('model','conditions','timing_summary','validation_preview')} if baseline else None
+                    analysis_path = DATA / 'analysis.json'
+                    analysis = json.loads(analysis_path.read_text(encoding='utf-8')) if analysis_path.exists() else None
+                    if analysis and analysis.get('dataset_revision') != index['revision']:
+                        raise ValueError('Automatic comparison belongs to another dataset revision')
+                    if analysis:
+                        analysis = {key:value for key,value in analysis.items() if key != 'frame_results'}
+                    result = {"analysis": analysis, "dataset_title": index.get("title", "WAID"), "dataset": DATASET, "category_names": index.get("category_names", {}), "source_urls": index.get("source_urls", ["https://github.com/xiaohuicui/WAID"]), "category_counts": dict(category_counts), "wild_downloaded": wild_count, "baseline": baseline_summary, "total": len(selected), "downloaded": len(available), "repository_total": len(index["pairs"]), "page": page, "pages": pages, "revision": index["revision"], "items": items}
                     self.send_content(json.dumps(result, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
                 elif path in allowed_images:
                     file = allowed_images[path]
@@ -236,12 +278,15 @@ def main():
     download_parser.add_argument("--limit", type=int, default=30)
     download_parser.add_argument("--all", action="store_true", help="Download the complete dataset")
     serve_parser = sub.add_parser("serve", help="Open a local viewer for downloaded files")
+    serve_parser.add_argument("--dataset", choices=("waid","bambi","sherbrooke"), default="waid")
     serve_parser.add_argument("--port", type=int, default=8765)
     serve_parser.add_argument("--open", action="store_true")
     args = parser.parse_args()
     if args.command == "download" and args.limit < 1:
         parser.error("--limit must be positive")
     try:
+        if args.command == "serve":
+            configure_dataset(args.dataset)
         if args.command == "serve" and not INDEX.exists():
             raise ValueError("No local dataset. Run: python waid.py download --limit 30")
         index = get_index()

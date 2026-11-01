@@ -59,7 +59,7 @@ class WaidTests(unittest.TestCase):
         self.assertEqual(len(waid.sample_pairs(pairs, 100)), 30)
 
     def test_http_serves_only_available_images_and_paginates(self):
-        with tempfile.TemporaryDirectory(dir=waid.ROOT) as folder, patch.object(waid, "DATA", Path(folder)):
+        with tempfile.TemporaryDirectory(dir=waid.ROOT) as folder, patch.object(waid, "DATA", Path(folder)), patch.object(waid, "ROOT", Path(folder)):
             image = {"path": "WAID/images/test/a.jpg"}
             label = {"path": "WAID/labels/test/a.txt"}
             waid.local_file(image).parent.mkdir(parents=True)

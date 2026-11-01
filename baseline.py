@@ -56,6 +56,7 @@ def percentile(values, fraction):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dataset', choices=('waid','bambi','sherbrooke'), default='waid')
+    parser.add_argument('--validation-only', action='store_true', help='Process only the frozen validation images')
     parser.add_argument('--weights', help='Local weights for comparing a fine-tuned model')
     parser.add_argument('--model-label', help='Readable model label in the report')
     parser.add_argument('--no-latest', action='store_true', help='Save diagnostic report without replacing the viewer baseline')
@@ -87,7 +88,8 @@ def main():
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cudnn.benchmark = False
     index = waid.get_index()
-    pairs = [p for p in waid.downloaded_pairs(index) if p['split'] in ('train','valid')]
+    splits = ('valid',) if args.validation_only else ('train','valid')
+    pairs = [p for p in waid.downloaded_pairs(index) if p['split'] in splits]
     if not pairs or not any(p['split']=='valid' for p in pairs):
         raise RuntimeError('Download the preview first, including valid images.')
     weights = Path(args.weights).resolve() if args.weights else ROOT / 'data' / 'models' / 'yolo11n.pt'

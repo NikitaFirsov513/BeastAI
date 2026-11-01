@@ -254,7 +254,13 @@ def make_handler(index):
                         raise ValueError('Automatic comparison belongs to another dataset revision')
                     if analysis:
                         analysis = {key:value for key,value in analysis.items() if key != 'frame_results'}
-                    result = {"analysis": analysis, "dataset_title": index.get("title", "WAID"), "dataset": DATASET, "category_names": index.get("category_names", {}), "source_urls": index.get("source_urls", ["https://github.com/xiaohuicui/WAID"]), "category_counts": dict(category_counts), "wild_downloaded": wild_count, "baseline": baseline_summary, "total": len(selected), "downloaded": len(available), "repository_total": len(index["pairs"]), "page": page, "pages": pages, "revision": index["revision"], "items": items}
+                    threshold_path = DATA / 'threshold-analysis.json'
+                    threshold_analysis = json.loads(threshold_path.read_text(encoding='utf-8')) if threshold_path.exists() else None
+                    if threshold_analysis and (threshold_analysis.get('dataset_revision') != index['revision'] or not baseline or threshold_analysis.get('model_sha256') != baseline.get('model_sha256')):
+                        threshold_analysis = None
+                    if threshold_analysis:
+                        threshold_analysis = {key:value for key,value in threshold_analysis.items() if key != 'frame_results'}
+                    result = {"threshold_analysis": threshold_analysis, "analysis": analysis, "dataset_title": index.get("title", "WAID"), "dataset": DATASET, "category_names": index.get("category_names", {}), "source_urls": index.get("source_urls", ["https://github.com/xiaohuicui/WAID"]), "category_counts": dict(category_counts), "wild_downloaded": wild_count, "baseline": baseline_summary, "total": len(selected), "downloaded": len(available), "repository_total": len(index["pairs"]), "page": page, "pages": pages, "revision": index["revision"], "items": items}
                     self.send_content(json.dumps(result, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
                 elif path in allowed_images:
                     file = allowed_images[path]

@@ -11,7 +11,8 @@
 <p><span style="color:#80ff9b">Зелёные рамки — разметка авторов.</span> <span style="color:#69b9ff">Синие пунктирные — предсказания модели.</span><br><span id="modelstage">Загружается информация о модели.</span> Нажми на снимок для увеличения и переключай слои.</p>
 <p id="baselineinfo"></p>
 <p id="auditinfo" style="color:#efcf8e" role="note"></p>
-<section id="comparison" class="comparison" hidden><h2>Автоматическое сравнение</h2><p id="comparisonscope"></p><div class="tablewrap"><table class="metrics"><thead><tr><th>Режим</th><th>Совпадений</th><th id="missheader">Рамок разметки без пары</th><th id="falseheader">Предсказаний без пары</th><th>Вся цепочка, мс</th></tr></thead><tbody id="comparisonrows"></tbody></table></div><p><small id="comparisonnote">Совпадение: IoU ≥ 0,5, по одной рамке с каждой стороны.</small></p></section>
+<section id="thresholdcomparison" class="comparison" hidden><h2>Порог обнаружения</h2><p id="thresholdscope"></p><div class="tablewrap"><table class="metrics"><thead><tr><th>Порог</th><th>Найдено</th><th>Пропуски</th><th>Ложные рамки</th><th>Малые животные</th></tr></thead><tbody id="thresholdrows"></tbody></table></div><p><small>Ниже порог — больше сохранённых рамок. Веса и разрешение не меняются. Таблица рассчитана автоматически по тем же снимкам; рабочие рамки внизу пока показываются при пороге 0,25. Время отдельных порогов этой фильтрацией не измеряется.</small></p></section>
+<section id="comparison" class="comparison" hidden><h2>Автоматическое сравнение</h2><p id="comparisonscope"></p><div class="tablewrap"><table class="metrics"><thead><tr><th>Режим</th><th>Совпадений</th><th id="missheader">Рамок разметки без пары</th><th id="falseheader">Предсказаний без пары</th><th>Малые животные</th><th>Вся цепочка, мс</th></tr></thead><tbody id="comparisonrows"></tbody></table></div><p><small id="comparisonnote">Совпадение: IoU ≥ 0,5, по одной рамке с каждой стороны.</small></p></section>
 <div class="toolbar">
  <label><input id="boxes" type="checkbox" checked> Разметка авторов</label>
  <label><input id="predictions" type="checkbox" checked> Предсказания</label>
@@ -62,7 +63,7 @@ async function load(){
  const token=++generation;$('status').textContent='Загружаем список…';
  try{
   const response=await fetch('/api/items?'+new URLSearchParams({page,split:$('split').value,category:$('category').value,q:$('search').value}));if(!response.ok)throw Error(await response.text());const data=await response.json();if(token!==generation)return;
-  $('modelstage').textContent=data.dataset==='sherbrooke'?'В просмотре — YOLO11n после 20 эпох дообучения, один класс animal (олени в этом учебном опыте).':'Готовая YOLO11n: мы ещё не дообучали её на этих снимках.';
+  $('modelstage').textContent=data.baseline?`В просмотре — ${data.baseline.model}.`:'Для этой подборки ещё нет сохранённых предсказаний.';
   $('baselineinfo').textContent=data.baseline?`${data.baseline.model} · вход ${data.baseline.conditions.input_shape[2]} × ${data.baseline.conditions.input_shape[3]} · один кадр за запуск · медианное время всей цепочки ${data.baseline.timing_summary.total_ms.median.toFixed(1)} мс на ${data.baseline.conditions.gpu}. Это предварительный замер на маленькой выборке.`:'Предсказаний пока нет. Запусти baseline.py.';
   $('auditinfo').textContent=data.dataset==='bambi'?'Разметка авторов покрывает проверенные траектории, но не всех животных в кадре. Синяя рамка без зелёной не обязательно означает ошибку модели. Показатель качества потребует полной проверки разметки.':'';
   $('comparison').hidden=!data.analysis;
@@ -71,7 +72,12 @@ async function load(){
    $('missheader').textContent=full?'Пропуски':'Рамок разметки без пары';$('falseheader').textContent=full?'Ложные обнаружения':'Предсказаний без пары';
    $('comparisonscope').textContent=`${a.validation_images} проверочных кадров, ${a.experiments[0].reference_boxes} рамок разметки. ${a.validation_flights?.length?'Полёты: '+a.validation_flights.join(', ')+'.':'Сохранено исходное разделение авторов по полётам.'} Расчёт выполняет программа на одной и той же проверочной части.`;
    $('comparisonnote').textContent=full?`Совпадение: IoU ≥ 0,5. Ложные рамки и пропуски считаются по авторской COCO-разметке для оленей. Время — медиана всей цепочки на тех же ${a.experiments[0].timing_images} кадрах, по одному кадру за запуск, FP32. Это небольшой учебный опыт на съёмке фермы в Канаде.`:`Совпадение: IoU ≥ 0,5. Предсказание без пары не обязательно ошибочно: исходная разметка покрывает не всех животных. Время — медиана всей цепочки на тех же ${a.experiments[0].timing_images} кадрах.`;
-   $('comparisonrows').replaceChildren(...a.experiments.map(e=>{const row=element('tr');for(const value of [e.label??`${e.resolution} · порог ${e.confidence_threshold}`,`${e.matched} / ${e.reference_boxes}`,e.unmatched_reference,e.unmatched_predictions,e.median_total_ms.toFixed(1)])row.append(element('td','',String(value)));return row}));
+   $('comparisonrows').replaceChildren(...a.experiments.map(e=>{const row=element('tr');for(const value of [e.label??`${e.resolution} · порог ${e.confidence_threshold}`,`${e.matched} / ${e.reference_boxes}`,e.unmatched_reference,e.unmatched_predictions,e.small_fixed_reference_at_1024==null?'—':`${e.small_fixed_matched} / ${e.small_fixed_reference_at_1024}`,e.median_total_ms.toFixed(1)])row.append(element('td','',String(value)));return row}));
+  }
+  $('thresholdcomparison').hidden=!data.threshold_analysis;
+  if(data.threshold_analysis){
+   const t=data.threshold_analysis;$('thresholdscope').textContent=`${t.validation_images} проверочных кадров, ${t.reference_boxes} рамок. Та же обученная модель, вход 1024. Текущий порог: ${t.current_threshold}.`;
+   $('thresholdrows').replaceChildren(...t.points.filter(p=>t.display_thresholds.includes(p.threshold)).sort((a,b)=>b.threshold-a.threshold).map(p=>{const row=element('tr');if(p.threshold===t.current_threshold)row.style.background='#273c30';for(const value of [p.threshold,`${p.matched} / ${p.reference_boxes}`,p.missed,p.false_detections,`${p.small_matched} / ${p.small_reference}`])row.append(element('td','',String(value)));return row}));
   }
   page=data.page;$('grid').replaceChildren(...data.items.map(card));$('status').textContent=`${data.dataset_title}. Кадров в рабочей выборке: ${data.downloaded}. По выбранным фильтрам: ${data.total}.`;
   $('page').textContent=`${page+1} / ${data.pages}`;$('prev').disabled=page===0;$('next').disabled=page+1>=data.pages;

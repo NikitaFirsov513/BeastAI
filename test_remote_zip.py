@@ -1,6 +1,7 @@
 import io
 import re
 import unittest
+import urllib.error
 from unittest.mock import patch
 import zipfile
 from remote_zip import RemoteZipReader
@@ -46,6 +47,23 @@ class RemoteZipTests(unittest.TestCase):
         with patch('urllib.request.urlopen') as opener:
             with self.assertRaises(ValueError): RemoteZipReader('https://example.invalid/a',100000,budget=8).read(1)
         opener.assert_not_called()
+
+    def test_rate_limit_respects_retry_after_without_reading_error_body(self):
+        error=urllib.error.HTTPError('https://example.invalid/a',429,'rate limit',{'Retry-After':'65'},None)
+        response=Response(b'x'*100,0,99)
+        with patch('urllib.request.urlopen',side_effect=[error,response]) as opener,patch('remote_zip.time.sleep') as sleep:
+            reader=RemoteZipReader('https://example.invalid/a',100)
+            self.assertEqual(reader.read(1),b'x')
+        self.assertEqual(opener.call_count,2)
+        self.assertGreaterEqual(sum(call.args[0] for call in sleep.call_args_list),65)
+        self.assertLessEqual(max(call.args[0] for call in sleep.call_args_list),30)
+        self.assertEqual(reader.bytes_received,100)
+
+    def test_missing_remote_file_is_not_retried(self):
+        error=urllib.error.HTTPError('https://example.invalid/a',404,'missing',{},None)
+        with patch('urllib.request.urlopen',side_effect=error) as opener:
+            with self.assertRaises(urllib.error.HTTPError):RemoteZipReader('https://example.invalid/a',100).read(1)
+        self.assertEqual(opener.call_count,1)
 
 
 if __name__=='__main__': unittest.main()

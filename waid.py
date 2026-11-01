@@ -211,6 +211,20 @@ def make_handler(index):
     wild_count = sum(bool(names.intersection(wild_species)) for names in categories.values())
     allowed_images = {"/data/" + "/".join(PurePosixPath(p["image"]["path"]).parts[1:]): local_file(p["image"]) for p in available}
 
+    roe=None
+    if (ROOT/'data/roe/audit/summary.json').is_file():
+        from roe_preview import RoePreview
+        roe=RoePreview(ROOT,parse_labels)
+        allowed_images.update(roe.allowed_images)
+    dataset_options=[{'id':DATASET,'label':'Олени — прежние кадры' if DATASET=='sherbrooke' else index.get('title',DATASET)}]
+    if roe:dataset_options.append({'id':'roe','label':'Косули — новые 32 снимка'})
+    roe_training=None
+    if (ROOT/'data/mixed_pilot/index.json').is_file():
+        from roe_preview import RoePreview
+        roe_training=RoePreview(ROOT,parse_labels,training=True)
+        allowed_images.update(roe_training.allowed_images)
+        dataset_options.append({'id':'roe_train','label':'Косули — учебные кадры ('+str(len(roe_training.samples))+')'})
+
     class Handler(BaseHTTPRequestHandler):
         def send_content(self, content, content_type, status=200):
             self.send_response(status)
@@ -229,6 +243,13 @@ def make_handler(index):
                     self.send_content((ROOT / "viewer.html").read_bytes(), "text/html; charset=utf-8")
                 elif path == "/api/items":
                     query = urllib.parse.parse_qs(url.query)
+                    requested=query.get('dataset',[DATASET])[0] or DATASET
+                    collection=roe if requested=='roe' else roe_training if requested=='roe_train' else None
+                    if collection:
+                        result=collection.response(query);result['dataset_options']=dataset_options
+                        self.send_content(json.dumps(result,ensure_ascii=False).encode('utf-8'),'application/json; charset=utf-8')
+                        return
+                    if requested!=DATASET:raise ValueError('Unknown viewer collection')
                     split = query.get("split", [""])[0]
                     needle = query.get("q", [""])[0].lower()
                     category = query.get("category", [""])[0]
@@ -261,6 +282,8 @@ def make_handler(index):
                     if threshold_analysis:
                         threshold_analysis = {key:value for key,value in threshold_analysis.items() if key != 'frame_results'}
                     result = {"threshold_analysis": threshold_analysis, "analysis": analysis, "dataset_title": index.get("title", "WAID"), "dataset": DATASET, "category_names": index.get("category_names", {}), "source_urls": index.get("source_urls", ["https://github.com/xiaohuicui/WAID"]), "category_counts": dict(category_counts), "wild_downloaded": wild_count, "baseline": baseline_summary, "total": len(selected), "downloaded": len(available), "repository_total": len(index["pairs"]), "page": page, "pages": pages, "revision": index["revision"], "items": items}
+                    result['dataset_options']=dataset_options
+                    result['effective_split']=split
                     self.send_content(json.dumps(result, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
                 elif path in allowed_images:
                     file = allowed_images[path]

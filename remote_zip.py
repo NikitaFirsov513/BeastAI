@@ -4,16 +4,21 @@ import io
 import time
 import urllib.error
 import urllib.request
+from email.utils import parsedate_to_datetime
+from datetime import datetime,timezone
 
 
 class RemoteZipReader(io.RawIOBase):
-    def __init__(self, url, size, budget=128*1024**2):
+    def __init__(self, url, size, budget=128*1024**2, minimum_interval=0.):
         super().__init__()
         self.url, self.size, self.budget = url, int(size), budget
         self.position = 0
         self.bytes_received = 0
         self.requests = 0
         self.cache = OrderedDict()
+        self.minimum_interval=float(minimum_interval)
+        self.last_request_time=0.
+        self.rate_limit_waits=[]
 
     def readable(self):
         return True
@@ -51,9 +56,12 @@ class RemoteZipReader(io.RawIOBase):
         if self.bytes_received+count > self.budget:
             raise ValueError('Partial-download budget exceeded')
         expected = f'bytes {start}-{end}/{self.size}'
-        for attempt in range(3):
+        for attempt in range(6):
             try:
                 req = urllib.request.Request(self.url,headers={'User-Agent':'BeastAI-educational-preview','Accept-Encoding':'identity','Range':f'bytes={start}-{end}'})
+                pause=self.minimum_interval-(time.monotonic()-self.last_request_time)
+                if pause>0:time.sleep(pause)
+                self.last_request_time=time.monotonic()
                 with urllib.request.urlopen(req,timeout=35) as response:
                     if response.status != 206 or response.headers.get('Content-Range') != expected:
                         raise ValueError('Server did not honour the exact byte range; response body was not read')
@@ -61,10 +69,24 @@ class RemoteZipReader(io.RawIOBase):
                 if len(content) != count:
                     raise ValueError('Incomplete range response')
                 break
+            except urllib.error.HTTPError as error:
+                if error.code not in (429,503) or attempt==5:raise
+                value=error.headers.get('Retry-After','60')
+                try:delay=float(value)
+                except (ValueError,TypeError):
+                    try:
+                        moment=parsedate_to_datetime(value)
+                        if moment.tzinfo is None:moment=moment.replace(tzinfo=timezone.utc)
+                        delay=(moment-datetime.now(timezone.utc)).total_seconds()
+                    except (ValueError,TypeError,OverflowError):delay=60.
+                delay=max(15.,delay);self.rate_limit_waits.append({'status':error.code,'seconds':delay})
+                print(f'HTTP {error.code}: respecting host cooldown for {delay:.0f} seconds',flush=True)
+                remaining=delay
+                while remaining>0:
+                    chunk=min(30.,remaining);time.sleep(chunk);remaining-=chunk
             except (urllib.error.URLError, TimeoutError, OSError):
-                if attempt==2:
-                    raise
-                time.sleep(attempt+1)
+                if attempt==5:raise
+                time.sleep(min(5,attempt+1))
         self.bytes_received += len(content)
         self.requests += 1
         self.cache[start] = content

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeastAI · Проверка разметки WAID</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101719;color:#edf4f0}*{box-sizing:border-box}body{margin:0}main{max-width:1440px;margin:auto;padding:32px 24px}header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.brand{color:#9cf4bc;font-size:12px;letter-spacing:3px}h1{font-size:30px;margin:8px 0}p{color:#b5c6bd;line-height:1.5}.toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#182321ee;padding:16px;border:1px solid #35443d;border-radius:12px;margin:24px 0}button,select,input{font:inherit;color:inherit;background:#22332b;border:1px solid #486252;border-radius:7px;padding:9px 12px}button{cursor:pointer}button:hover{background:#304e3d}button:disabled{opacity:.4;cursor:default}input[type=checkbox]{accent-color:#9cf4bc}input[type=search]{min-width:180px;flex:1}label{display:flex;align-items:center;gap:6px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(350px,100%),1fr));gap:20px}.card{background:#19221f;border:1px solid #35443d;border-radius:12px;overflow:hidden}.photo{position:relative;display:block;cursor:zoom-in;overflow:hidden;background:#060b08}.photo img{display:block;width:100%;height:auto}.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.overlay rect{fill:none;stroke:#80ff9b;stroke-width:2;vector-effect:non-scaling-stroke}.overlay text{fill:#fff;stroke:#102c18;stroke-width:3px;paint-order:stroke;font:bold 13px system-ui;vector-effect:non-scaling-stroke}.no-boxes .overlay{display:none}.no-names .overlay text{display:none}.info{padding:13px 16px}.meta{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:#a9ddbb}.filename{font:11px ui-monospace,monospace;overflow-wrap:anywhere;color:#9bafa2;margin-top:10px}.error{color:#ffb69d}.footer{display:flex;justify-content:center;align-items:center;gap:18px;margin:28px 0}small{color:#8ea99b}dialog{width:min(1400px,96vw);max-height:95vh;padding:14px;border:1px solid #486252;border-radius:12px;background:#101719;color:inherit}dialog::backdrop{background:#000c}dialog .photo{cursor:default}dialog .photo img{width:100%;max-height:78vh;object-fit:contain}dialog .closebar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}dialog .photo{width:fit-content;max-width:100%;margin:auto}#status{min-height:24px}a{color:#9cf4bc}
+</style>
+<main>
+<header><div><div class="brand">BEASTAI / DATA EXPLORER</div><h1>Животные и правильные рамки</h1></div></header>
+<p>Исходные снимки WAID и разметка авторов. Это <strong>не предсказания нейросети</strong>.<br>Нажми на снимок, чтобы увеличить. Зелёные рамки можно скрыть для сравнения.</p>
+<div class="toolbar">
+ <label><input id="boxes" type="checkbox" checked> Рамки</label>
+ <label><input id="names" type="checkbox" checked> Категории</label>
+ <select id="split" aria-label="Часть набора"><option value="">Все части</option><option value="train">train — обучение</option><option value="valid">valid — проверка при настройке</option><option value="test">test — итоговая проверка</option></select>
+ <input id="search" type="search" placeholder="Поиск по имени файла" aria-label="Поиск по имени файла">
+</div>
+<p id="status" aria-live="polite">Загружаем список…</p>
+<div id="grid" class="grid"></div>
+<div class="footer"><button id="prev">← Назад</button><span id="page"></span><button id="next">Дальше →</button></div>
+<small id="note"></small>
+<p><small>Пустая разметка, отсутствующий файл и ошибка разметки показываются отдельно. Маленькая выборка нужна для знакомства с данными; она не даёт надёжной оценки качества модели.</small></p>
+</main>
+<dialog id="zoom"><div class="closebar"><span id="zoomtitle"></span><label><input id="zoomboxes" type="checkbox" checked aria-label="Рамки на увеличенном снимке"> Рамки</label><label><input id="zoomnames" type="checkbox" checked aria-label="Категории на увеличенном снимке"> Категории</label><button id="close">Закрыть · Esc</button></div><div id="zoomphoto"></div></dialog>
+<script>
+const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
+let page=0, generation=0, searchTimer;
+function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function photo(item){
+ const wrap=element('div','photo'), img=element('img');img.loading='lazy';img.alt='Снимок WAID: '+item.name;img.src=item.src;wrap.append(img);
+ const svg=document.createElementNS(NS,'svg');svg.classList.add('overlay');svg.setAttribute('aria-hidden','true');
+ img.addEventListener('load',()=>{
+  svg.replaceChildren();const w=img.naturalWidth,h=img.naturalHeight;svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
+  for(const [i,b] of item.boxes.entries()){
+   const rect=document.createElementNS(NS,'rect');for(const [k,v] of Object.entries({x:b.x*w,y:b.y*h,width:b.width*w,height:b.height*h}))rect.setAttribute(k,v);svg.append(rect);
+   const text=document.createElementNS(NS,'text');text.setAttribute('x',Math.max(2,b.x*w));text.setAttribute('y',Math.max(14,b.y*h-4));text.textContent=`${i+1} · ${b.class_name}`;svg.append(text);
+  }
+ });
+ img.addEventListener('error',()=>{wrap.append(element('p','error','Не удалось прочитать изображение. Повтори загрузку набора.'))});
+ wrap.append(svg);return wrap;
+}
+function card(item){
+ const card=element('article','card'), preview=photo(item);preview.tabIndex=0;preview.setAttribute('role','button');preview.setAttribute('aria-label','Увеличить снимок');
+ const open=()=>{$('zoomtitle').textContent=`${item.split} · Рамок: ${item.boxes.length}`;$('zoomphoto').replaceChildren(photo(item));$('zoom').showModal()};
+ preview.onclick=open;preview.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}};
+ const info=element('div','info'), meta=element('div','meta');meta.append(element('span','',item.split),element('span','',`Рамок: ${item.boxes.length}`));info.append(meta);
+ if(item.status==='empty')info.append(element('p','','Файл разметки пуст: рамок нет.'));
+ for(const error of item.errors)info.append(element('p','error',error));
+ info.append(element('div','filename',item.name));card.append(preview,info);return card;
+}
+async function load(){
+ const token=++generation;$('status').textContent='Загружаем список…';
+ try{
+  const response=await fetch('/api/items?'+new URLSearchParams({page,split:$('split').value,q:$('search').value}));if(!response.ok)throw Error(await response.text());const data=await response.json();if(token!==generation)return;
+  page=data.page;$('grid').replaceChildren(...data.items.map(card));$('status').textContent=`На компьютере: ${data.downloaded} из ${data.repository_total} снимков. По фильтру: ${data.total}.`;
+  $('page').textContent=`${page+1} / ${data.pages}`;$('prev').disabled=page===0;$('next').disabled=page+1>=data.pages;
+  $('note').textContent=`Источник: xiaohuicui/WAID · версия ${data.revision.slice(0,12)}. Снимки не изменяются; рамки рисует просмотрщик.`;
+ }catch(e){if(token===generation)$('status').textContent='Ошибка: '+e.message}
+}
+for(const id of ['boxes','zoomboxes'])$(id).onchange=()=>{const checked=$(id).checked;document.body.classList.toggle('no-boxes',!checked);$('boxes').checked=checked;$('zoomboxes').checked=checked};
+for(const id of ['names','zoomnames'])$(id).onchange=()=>{const checked=$(id).checked;document.body.classList.toggle('no-names',!checked);$('names').checked=checked;$('zoomnames').checked=checked};
+$('split').onchange=()=>{page=0;load()};$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=0;load()},250)};
+$('prev').onclick=()=>{page--;load();window.scrollTo({top:0})};$('next').onclick=()=>{page++;load();window.scrollTo({top:0})};$('close').onclick=()=>$('zoom').close();
+load();
+</script>
+</html>

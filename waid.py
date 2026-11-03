@@ -225,6 +225,51 @@ def make_handler(index):
         allowed_images.update(roe_training.allowed_images)
         dataset_options.append({'id':'roe_train','label':'Косули — учебные кадры ('+str(len(roe_training.samples))+')'})
 
+    mixed=None
+    if (ROOT/'data/mixed_pilot/evaluation/published.json').is_file():
+        from mixed_preview import MixedPreview
+        mixed=MixedPreview(ROOT,parse_labels)
+        allowed_images.update(mixed.allowed_images)
+        dataset_options.append({'id':'mixed','label':'Смешанное дообучение — до/после'})
+
+    focused=None
+    if (ROOT/'data/roe_focus/evaluation/published.json').is_file():
+        from mixed_preview import MixedPreview
+        focused=MixedPreview(ROOT,parse_labels,experiment='roe_focus')
+        allowed_images.update(focused.allowed_images)
+        dataset_options.append({'id':'roe_focus','label':'Равная доля косуль — новый опыт'})
+
+    expanded={}
+    if (ROOT/'data/roe_expanded/dataset_ready.json').is_file():
+        from expanded_preview import ExpandedPreview
+        for mode in ('train','control','fresh'):
+            collection=ExpandedPreview(ROOT,parse_labels,mode)
+            if not collection.entries:continue
+            expanded[collection.dataset_id]=collection
+            allowed_images.update(collection.allowed_images)
+            dataset_options.append({'id':collection.dataset_id,'label':collection.title})
+
+    tiny=None
+    if (ROOT/'data/tiny_memorization/comparison.json').is_file():
+        from tiny_preview import TinyMemorizationPreview
+        tiny=TinyMemorizationPreview(ROOT,parse_labels)
+        allowed_images.update(tiny.allowed_images)
+        dataset_options.append({'id':'tiny_memorization','label':'Диагностика усвоения · 5 учебных кадров'})
+
+    tiny_shifted=None
+    if (ROOT/'data/tiny_grid_shift/comparison.json').is_file():
+        from tiny_preview import TinyMemorizationPreview
+        tiny_shifted=TinyMemorizationPreview(ROOT,parse_labels,experiment='tiny_grid_shift')
+        allowed_images.update(tiny_shifted.allowed_images)
+        dataset_options.append({'id':'tiny_grid_shift','label':'Диагностика · сдвиг на 1 пиксель'})
+
+    crops=None
+    if (ROOT/'data/crop_lesson/verification.json').is_file():
+        from crop_preview import CropLessonPreview
+        crops=CropLessonPreview(ROOT,parse_labels)
+        allowed_images.update(crops.allowed_images)
+        dataset_options.append({'id':'crop_lesson','label':'Фрагменты · подготовка обучения'})
+
     class Handler(BaseHTTPRequestHandler):
         def send_content(self, content, content_type, status=200):
             self.send_response(status)
@@ -244,7 +289,7 @@ def make_handler(index):
                 elif path == "/api/items":
                     query = urllib.parse.parse_qs(url.query)
                     requested=query.get('dataset',[DATASET])[0] or DATASET
-                    collection=roe if requested=='roe' else roe_training if requested=='roe_train' else None
+                    collection=crops if requested=='crop_lesson' else roe if requested=='roe' else roe_training if requested=='roe_train' else mixed if requested=='mixed' else focused if requested=='roe_focus' else tiny if requested=='tiny_memorization' else tiny_shifted if requested=='tiny_grid_shift' else expanded.get(requested)
                     if collection:
                         result=collection.response(query);result['dataset_options']=dataset_options
                         self.send_content(json.dumps(result,ensure_ascii=False).encode('utf-8'),'application/json; charset=utf-8')

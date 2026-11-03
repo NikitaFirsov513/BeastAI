@@ -270,6 +270,24 @@ def make_handler(index):
         allowed_images.update(crops.allowed_images)
         dataset_options.append({'id':'crop_lesson','label':'Фрагменты · подготовка обучения'})
 
+    crop_pilots={}
+    if (ROOT/'data/crop_pilot/evaluation/published.json').is_file():
+        from crop_pilot_preview import CropPilotPreview
+        for crop_split in ('control','fresh'):
+            collection=CropPilotPreview(ROOT,parse_labels,crop_split)
+            crop_pilots[collection.dataset_id]=collection
+            allowed_images.update(collection.allowed_images)
+            dataset_options.append({'id':collection.dataset_id,'label':collection.title})
+
+    drone_references={}
+    if (ROOT/'data/dronemegadetector/evaluation/published.json').is_file():
+        from drone_reference_preview import DroneReferencePreview
+        for reference_split in ('control','fresh'):
+            collection=DroneReferencePreview(ROOT,parse_labels,reference_split)
+            drone_references[collection.dataset_id]=collection
+            allowed_images.update(collection.allowed_images)
+            dataset_options.append({'id':collection.dataset_id,'label':collection.title})
+
     class Handler(BaseHTTPRequestHandler):
         def send_content(self, content, content_type, status=200):
             self.send_response(status)
@@ -289,7 +307,7 @@ def make_handler(index):
                 elif path == "/api/items":
                     query = urllib.parse.parse_qs(url.query)
                     requested=query.get('dataset',[DATASET])[0] or DATASET
-                    collection=crops if requested=='crop_lesson' else roe if requested=='roe' else roe_training if requested=='roe_train' else mixed if requested=='mixed' else focused if requested=='roe_focus' else tiny if requested=='tiny_memorization' else tiny_shifted if requested=='tiny_grid_shift' else expanded.get(requested)
+                    collection=drone_references[requested] if requested in drone_references else crop_pilots[requested] if requested in crop_pilots else crops if requested=='crop_lesson' else roe if requested=='roe' else roe_training if requested=='roe_train' else mixed if requested=='mixed' else focused if requested=='roe_focus' else tiny if requested=='tiny_memorization' else tiny_shifted if requested=='tiny_grid_shift' else expanded.get(requested)
                     if collection:
                         result=collection.response(query);result['dataset_options']=dataset_options
                         self.send_content(json.dumps(result,ensure_ascii=False).encode('utf-8'),'application/json; charset=utf-8')

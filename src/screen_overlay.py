@@ -1,5 +1,6 @@
 """Local screen-region animal detector with a transparent, click-through Windows overlay."""
 from project_paths import PROJECT_ROOT
+from overlay_process import DetectorWorker
 from pathlib import Path
 from dataclasses import dataclass
 from collections import deque
@@ -46,12 +47,11 @@ def put_latest(target,item):
         try:target.put_nowait(item)
         except queue.Full:pass
 
-class DetectorWorker(threading.Thread):
-    def __init__(self,region,model_key,threshold,fps,frames,events,generation):
-        super().__init__(daemon=False)
+class DetectorTask:
+    def __init__(self,region,model_key,threshold,fps,frames,events,generation,cancel):
         self.region=region;self.key=model_key;self.threshold=threshold;self.fps=fps
-        self.frames=frames;self.events=events;self.generation=generation;self.cancel=threading.Event()
-        self.samples=deque(maxlen=600);self.frame_count=0;self.model=None;self.conditions={}
+        self.frames=frames;self.events=events;self.generation=generation;self.cancel=cancel
+        self.samples=deque(maxlen=600);self.frame_count=0;self.model=None;self.conditions={};self.failed=False
     def event(self,kind,value):self.events.put((self.generation,kind,value))
     def run(self):
         torch=None;grabber=None
@@ -112,19 +112,23 @@ class DetectorWorker(threading.Thread):
                 self.samples.append({k:row[k] for k in ('capture_ms','detector_and_boxes_ms','capture_to_result_ms')})
                 self.cancel.wait(max(0.,1/self.fps-(time.perf_counter()-started)))
         except Exception as error:
-            logging.exception('Detector failed');self.event('error',str(error))
+            self.failed=True;logging.exception('Detector failed');self.event('error',str(error))
         finally:
-            if grabber is not None:grabber.close()
-            if torch is not None:
-                self.model=None
-                import gc
-                gc.collect()
-                if torch.cuda.is_available():torch.cuda.empty_cache()
-            if self.samples:
-                stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-                payload={'model':self.key,'region':self.region.bbox,'input':1280 if self.key=='reference' else 1024,'precision':'FP32; TF32 off','batch':1,'fps_limit':self.fps,'capture_backend':'Cached GDI DIB, selected ROI only','confidence':self.threshold,'frames_processed':self.frame_count,'conditions':self.conditions,'timing_window':'Last600 processed frames at most','timings':list(self.samples),'images_saved':False,'scope':'Live screen capture plus detector/box processing; model load and warmup excluded. UI handoff measured separately; no quality score or physical-display latency claim.'}
-                (OUT/f'session_{stamp}_{os.getpid()}_{self.generation}.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-            self.event('stopped',None)
+            try:
+                if grabber is not None:grabber.close()
+                if torch is not None:
+                    self.model=None
+                    import gc
+                    gc.collect()
+                    if torch.cuda.is_available():torch.cuda.empty_cache()
+                if self.samples:
+                    stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+                    payload={'model':self.key,'region':self.region.bbox,'input':1280 if self.key=='reference' else 1024,'precision':'FP32; TF32 off','batch':1,'fps_limit':self.fps,'capture_backend':'Cached GDI DIB, selected ROI only','confidence':self.threshold,'frames_processed':self.frame_count,'conditions':self.conditions,'timing_window':'Last600 processed frames at most','timings':list(self.samples),'images_saved':False,'scope':'Live screen capture plus detector/box processing; model load and warmup excluded. UI handoff measured separately; no quality score or physical-display latency claim.'}
+                    (OUT/f'session_{stamp}_{os.getpid()}_{self.generation}.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+            except Exception:
+                logging.exception('Detector cleanup failed')
+            finally:
+                self.event('stopped',None)
 
 class Overlay:
     def __init__(self,root,region):
@@ -183,6 +187,7 @@ class App:
         buttons=ttk.Frame(panel);buttons.pack(fill='x')
         self.start_button=ttk.Button(buttons,text='2. Старт',command=self.start,style='Accent.TButton',state='disabled');self.start_button.pack(side='left',fill='x',expand=True,padx=(0,8))
         self.stop_button=ttk.Button(buttons,text='Стоп / F8',command=self.stop,state='disabled');self.stop_button.pack(side='left',fill='x',expand=True)
+        ttk.Button(buttons,text='Выход',command=self.close).pack(side='left',padx=(8,0))
         self.status=self.tk.StringVar(value='Остановлено. Кадры не захватываются.')
         ttk.Label(panel,textvariable=self.status,wraplength=480).pack(anchor='w',pady=(15,6))
         self.metrics=tk.StringVar(value='Кадры не сохраняются и не отправляются в сеть.')
@@ -198,7 +203,7 @@ class App:
         self.region_text.set('Область ещё не выбрана' if region is None else f'{region.width} × {region.height} пикселей · положение {region.left}, {region.top}')
         self.start_button.configure(state='normal' if region and not self.worker else 'disabled')
     def choose_region(self):
-        if self.worker:return
+        if self.worker or self.closing:return
         from screen_overlay_win32 import virtual_desktop,place_window
         desktop=virtual_desktop();x,y,w,h=desktop
         self.root.withdraw();selection=self.tk.Toplevel(self.root);self.selector=selection
@@ -218,7 +223,7 @@ class App:
     def start(self):
         from tkinter import messagebox
         from screen_overlay_win32 import StopHotkey
-        if self.worker or self.region is None:return
+        if self.worker or self.region is None or self.closing:return
         try:
             threshold=float(self.threshold_widget.get().replace(',','.'));fps=int(self.fps_widget.get())
             if not .05<=threshold<=.95 or not 1<=fps<=10:raise ValueError('Порог: 0,05–0,95; частота: 1–10 кадров/с.')
@@ -227,37 +232,67 @@ class App:
             if self.overlay:self.overlay.destroy();self.overlay=None
             logging.exception('Overlay start failed');messagebox.showerror('Не удалось запустить',str(error));return
         self.failure=None;self.generation+=1;generation=self.generation;self.render_times.clear();self.arrivals.clear();self.last_capture=None
-        self.worker=DetectorWorker(self.region,MODELS[self.model_name.get()],threshold,fps,self.frames,self.events,generation)
-        self.hotkey=StopHotkey(lambda:self.events.put((generation,'hotkey',None)),lambda text:self.events.put((generation,'warning',text)))
-        self.hotkey.start();self.worker.start();self.start_button.configure(state='disabled');self.stop_button.configure(state='normal');self.choose_button.configure(state='disabled')
+        try:
+            self.worker=DetectorWorker(self.region,MODELS[self.model_name.get()],threshold,fps,self.frames,self.events,generation)
+            self.worker.start()
+            self.hotkey=StopHotkey(lambda:self.events.put((generation,'hotkey',None)),lambda text:self.events.put((generation,'warning',text)))
+            self.hotkey.start()
+        except Exception as error:
+            logging.exception('Detector launch failed');self.failure='Ошибка запуска: '+str(error)
+            self.stop('launch_error');self.status.set(self.failure);return
+        self.start_button.configure(state='disabled');self.stop_button.configure(state='normal');self.choose_button.configure(state='disabled')
         for widget in (self.model_picker,self.threshold_widget,self.fps_widget):widget.configure(state='disabled')
         self.status.set('Запуск… F8 или «Стоп» — остановить.');self.metrics.set('Модель загружается. Обработка локальная.')
         logging.info('Started model=%s region=%s threshold=%s fps_limit=%s affinity=%s',MODELS[self.model_name.get()],self.region,threshold,fps,self.overlay.native)
-    def stop(self):
-        if self.worker:self.worker.cancel.set();self.status.set('Останавливаем…')
-        if self.hotkey:self.hotkey.stop();self.hotkey=None
-        if self.overlay:self.overlay.destroy();self.overlay=None
+    def stop(self,reason='user_stop'):
+        if self.worker:self.worker.request_stop(reason);self.status.set('Останавливаем…')
+        if self.hotkey:
+            try:self.hotkey.stop()
+            except Exception:logging.exception('Hotkey cleanup failed')
+            self.hotkey=None
+        if self.overlay:
+            try:self.overlay.destroy()
+            except self.tk.TclError:pass
+            self.overlay=None
         self.stop_button.configure(state='disabled');self.last_capture=None
+    def finish_worker(self):
+        worker=self.worker
+        if worker is None or worker.is_alive():return
+        if worker.exitcode not in (0,None) and worker.stop_reason is None and not self.failure:
+            self.failure='Процесс детектора завершился с ошибкой. См. журнал worker в data/screen_overlay.'
+        self.stop('worker_exit');self.worker=None
+        try:
+            worker.close()
+            payload={'pid':worker.pid,'exit_code':worker.exitcode,'reason':worker.stop_reason,'forced':worker.forced,'closing':self.closing,'generation':self.generation,'grace_seconds':worker.grace_seconds}
+            (OUT/'last_stop.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+            logging.info('Detector process finished: %s',payload)
+            if self.render_times:
+                values=sorted(self.render_times);payload={'generation':self.generation,'model':MODELS[self.model_name.get()],'region':self.region.bbox if self.region else None,'sample_count':len(values),'median_capture_to_draw_submit_ms':statistics.median(values),'p95_capture_to_draw_submit_ms':values[min(len(values)-1,int(.95*(len(values)-1)))],'scope':'Last120 visible results at most. Includes process-to-UI handoff; ends at drawing submission, not physical display.'}
+                (OUT/'last_ui_handoff.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+        except Exception:logging.exception('Could not save shutdown measurements')
+        self.status.set(self.failure or 'Остановлено. Кадры не захватываются.')
+        if self.render_times:self.metrics.set(f'Последняя серия: медиана до отрисовки {statistics.median(self.render_times):.0f} мс. Новые кадры не захватываются.')
+        self.choose_button.configure(state='normal');self.model_picker.configure(state='readonly')
+        for widget in (self.threshold_widget,self.fps_widget):widget.configure(state='normal')
+        self.set_region(self.region)
     def poll(self):
         while True:
             try:generation,kind,value=self.events.get_nowait()
             except queue.Empty:break
             if generation!=self.generation:continue
             if kind=='hotkey':self.stop()
-            elif kind in ('status','warning'):self.status.set(value)
-            elif kind=='ready':self.status.set('Работает · '+value['gpu']+' · FP32 · F8 — стоп')
-            elif kind=='error':self.failure='Ошибка: '+value;self.stop();self.status.set(self.failure)
-            elif kind=='stopped':
-                error=self.failure
-                self.stop();self.worker=None
-                if self.render_times:
-                    values=sorted(self.render_times);payload={'generation':self.generation,'model':MODELS[self.model_name.get()],'region':self.region.bbox if self.region else None,'sample_count':len(values),'median_capture_to_draw_submit_ms':statistics.median(values),'p95_capture_to_draw_submit_ms':values[min(len(values)-1,int(.95*(len(values)-1)))],'scope':'Last120 visible results at most. Ends when Tk drawing commands are submitted, not physical compositor/display latency. No screen pixels saved.'}
-                    (OUT/'last_ui_handoff.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
-                self.status.set(error or 'Остановлено. Кадры не захватываются.')
-                if self.render_times:self.metrics.set(f'Последняя серия: медиана до отрисовки {statistics.median(self.render_times):.0f} мс. Новые кадры не захватываются.')
-                self.choose_button.configure(state='normal');self.model_picker.configure(state='readonly')
-                for widget in (self.threshold_widget,self.fps_widget):widget.configure(state='normal')
-                self.set_region(self.region)
+            elif kind in ('status','warning'):
+                if not self.closing and self.worker and not self.worker.cancel.is_set():self.status.set(value)
+            elif kind=='ready':
+                if not self.closing and self.worker and not self.worker.cancel.is_set():self.status.set('Работает · '+value['gpu']+' · FP32 · F8 — стоп')
+            elif kind=='error':self.failure='Ошибка: '+value;self.stop('error');self.status.set(self.failure)
+            elif kind=='stopped':self.stop('completed')
+        if self.worker:
+            self.worker.poll_shutdown()
+            if not self.worker.is_alive():self.finish_worker()
+        if self.closing:
+            if self.worker is None:self.root.destroy();return
+            self.root.after(40,self.poll);return
         try:result=self.frames.get_nowait()
         except queue.Empty:result=None
         now=time.perf_counter()
@@ -270,19 +305,21 @@ class App:
                 self.metrics.set(f"Рамок: {len(result['boxes'])} · обработано {rate:.1f} кадра/с\nЗахват → команда отрисовки: {total:.0f} мс · медиана {statistics.median(self.render_times):.0f} мс")
             else:self.overlay.clear();self.metrics.set('Результат старше 1 с скрыт. Снизь нагрузку или выбери нашу YOLO11n.')
         if self.overlay and self.last_capture is not None and now-self.last_capture>1.0:self.overlay.clear()
-        if self.closing and self.worker is None:
-            if self.fixture:
-                try:self.fixture.destroy()
-                except self.tk.TclError:pass
-            self.root.destroy();return
         self.root.after(40,self.poll)
     def close(self):
-        self.closing=True
-        if self.selector:self.selector.destroy();self.selector=None;self.root.deiconify()
-        self.stop()
-        if self.worker is None:
-            if self.fixture:self.fixture.destroy()
-            self.root.destroy()
+        if self.closing:return
+        self.closing=True;logging.info('Overlay window close requested')
+        if self.selector:
+            try:self.selector.destroy()
+            except self.tk.TclError:pass
+            self.selector=None
+        self.stop('window_close')
+        if self.fixture:
+            try:self.fixture.destroy()
+            except self.tk.TclError:pass
+            self.fixture=None
+        self.root.withdraw()
+        if self.worker is None:self.root.destroy()
     def open_demo(self):
         from PIL import Image,ImageTk
         from screen_overlay_win32 import place_window,virtual_desktop
@@ -350,7 +387,12 @@ def main():
     from screen_overlay_win32 import enable_physical_pixels
     logging.info('Starting overlay; DPI=%s',enable_physical_pixels())
     import tkinter as tk
+    app=None
     try:
-        root=tk.Tk();App(root,demo=args.demo);root.mainloop()
-    finally:kernel.CloseHandle(mutex)
+        root=tk.Tk();app=App(root,demo=args.demo);root.mainloop()
+    finally:
+        if app and app.worker:
+            try:app.worker.force_shutdown()
+            except Exception:logging.exception('Final detector shutdown failed')
+        kernel.CloseHandle(mutex)
 if __name__=='__main__':main()

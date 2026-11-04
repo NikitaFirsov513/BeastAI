@@ -139,3 +139,29 @@ class RegionCapture:
         if self.bitmap:self.gdi.DeleteObject(self.bitmap);self.bitmap=None
         if self.memory_dc:self.gdi.DeleteDC(self.memory_dc);self.memory_dc=None
         if self.screen_dc:user32.ReleaseDC(None,self.screen_dc);self.screen_dc=None
+
+
+class StopSignal:
+    """Named manual-reset Windows event shared by the UI and its detector child."""
+    def __init__(self,name=None,*,open_existing=False):
+        import uuid
+        self.name=name or ('Local\\BeastAIStop_'+uuid.uuid4().hex)
+        self.handle=None
+        kernel32.CreateEventW.argtypes=[ctypes.c_void_p,wintypes.BOOL,wintypes.BOOL,wintypes.LPCWSTR]
+        kernel32.CreateEventW.restype=wintypes.HANDLE
+        kernel32.OpenEventW.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.LPCWSTR]
+        kernel32.OpenEventW.restype=wintypes.HANDLE
+        kernel32.SetEvent.argtypes=[wintypes.HANDLE];kernel32.SetEvent.restype=wintypes.BOOL
+        kernel32.WaitForSingleObject.argtypes=[wintypes.HANDLE,wintypes.DWORD];kernel32.WaitForSingleObject.restype=wintypes.DWORD
+        kernel32.CloseHandle.argtypes=[wintypes.HANDLE];kernel32.CloseHandle.restype=wintypes.BOOL
+        self.handle=kernel32.OpenEventW(0x00100000,False,self.name) if open_existing else kernel32.CreateEventW(None,True,False,self.name)
+        if not self.handle:raise ctypes.WinError(ctypes.get_last_error())
+    def set(self):
+        if self.handle and not kernel32.SetEvent(self.handle):raise ctypes.WinError(ctypes.get_last_error())
+    def wait(self,timeout):
+        result=kernel32.WaitForSingleObject(self.handle,max(0,min(0xfffffffe,int(timeout*1000))))
+        if result==0xffffffff:raise ctypes.WinError(ctypes.get_last_error())
+        return result==0
+    def is_set(self):return self.wait(0)
+    def close(self):
+        if self.handle:kernel32.CloseHandle(self.handle);self.handle=None
